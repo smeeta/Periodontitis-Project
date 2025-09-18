@@ -1,0 +1,149 @@
+#You'll need the pROC and caret packages. If not installed, run install.packages("pROC") and install.packages("caret").
+# Load necessary packages
+library(pROC)
+library(caret) # For confusionMatrix
+
+# --- 0. Data Loading and Preprocessing ---
+# Assume your data is in a dataframe named 'periodontal_data'
+# and includes the following columns (adjust names as per your actual data):
+# PatientID
+# CDC_AAP_AnyPeriodontitis (0 = No, 1 = Yes)
+# EFP_AAP_AnyPeriodontitis (0 = No, 1 = Yes)
+# CDC_AAP_Severe (0 = No, 1 = Yes)
+# EFP_AAP_Severe (0 = No, 1 = Yes)
+# Age_years, Gender, SmokingStatus, DiabetesStatus (for descriptive/stratified analysis)
+
+# Example: If your data is in a CSV file
+# periodontal_data <- read.csv("your_periodontal_data.csv")
+
+# Ensure your classification columns are factors with levels explicitly set,
+# where '1' is the 'positive' outcome (e.g., periodontitis or severe periodontitis).
+periodontal_data$CDC_AAP_AnyPeriodontitis <- factor(periodontal_data$CDC_AAP_AnyPeriodontitis, levels = c("0", "1"))
+periodontal_data$EFP_AAP_AnyPeriodontitis <- factor(periodontal_data$EFP_AAP_AnyPeriodontitis, levels = c("0", "1"))
+periodontal_data$CDC_AAP_Severe <- factor(periodontal_data$CDC_AAP_Severe, levels = c("0", "1"))
+periodontal_data$EFP_AAP_Severe <- factor(periodontal_data$EFP_AAP_Severe, levels = c("0", "1"))
+
+# You might also want to convert other categorical variables to factors if needed for stratified analysis
+periodontal_data$Gender <- factor(periodontal_data$Gender)
+periodontal_data$SmokingStatus <- factor(periodontal_data$SmokingStatus)
+periodontal_data$DiabetesStatus <- factor(periodontal_data$DiabetesStatus)
+
+# --- Objective 1: Any Periodontitis ---
+
+cat("--- Objective 1: Analysis for Any Periodontitis ---\n\n")
+
+# 1.1 Prevalence Comparison (Any Periodontitis)
+cat("1.1 Prevalence of Any Periodontitis:\n")
+prev_cdc_any <- prop.table(table(periodontal_data$CDC_AAP_AnyPeriodontitis))["1"] * 100
+prev_efp_any <- prop.table(table(periodontal_data$EFP_AAP_AnyPeriodontitis))["1"] * 100
+cat(paste0("  Prevalence by 2012 CDC/AAP: ", round(prev_cdc_any, 2), "%\n"))
+cat(paste0("  Prevalence by 2018 EFP/AAP: ", round(prev_efp_any, 2), "%\n"))
+
+# Chi-square test for prevalence comparison
+chi_sq_any <- chisq.test(table(periodontal_data$CDC_AAP_AnyPeriodontitis, periodontal_data$EFP_AAP_AnyPeriodontitis))
+cat("\n  Chi-square test for prevalence difference:\n")
+print(chi_sq_any)
+
+
+# 1.2 Accuracy Evaluation (EFP/AAP Any Periodontitis vs. CDC/AAP Any Periodontitis as reference)
+cat("\n1.2 Diagnostic Accuracy for Any Periodontitis (CDC/AAP as Reference):\n")
+
+# Confusion Matrix
+cm_any <- confusionMatrix(data = periodontal_data$EFP_AAP_AnyPeriodontitis,
+                          reference = periodontal_data$CDC_AAP_AnyPeriodontitis,
+                          positive = "1")
+print(cm_any)
+
+# Extract Sensitivity and Specificity
+sensitivity_any <- cm_any$byClass["Sensitivity"]
+specificity_any <- cm_any$byClass["Specificity"]
+ppv_any <- cm_any$byClass["Pos Pred Value"]
+npv_any <- cm_any$byClass["Neg Pred Value"]
+
+cat(paste0("  Sensitivity (SS): ", round(sensitivity_any, 3), "\n"))
+cat(paste0("  Specificity (SP): ", round(specificity_any, 3), "\n"))
+cat(paste0("  Positive Predictive Value (PPV): ", round(ppv_any, 3), "\n"))
+cat(paste0("  Negative Predictive Value (NPV): ", round(npv_any, 3), "\n"))
+
+# ROC Curve and AUC
+# Convert factor to numeric (0 or 1) for pROC, ensuring '1' is the positive class.
+roc_curve_any <- roc(response = periodontal_data$CDC_AAP_AnyPeriodontitis,
+                     predictor = as.numeric(as.character(periodontal_data$EFP_AAP_AnyPeriodontitis)),
+                     levels = c("0", "1"),
+                     direction = ">") # 'direction' indicates which direction of predictor values means higher risk
+
+auc_any <- auc(roc_curve_any)
+cat(paste0("  Area Under the ROC Curve (AUC): ", round(auc_any, 3), " (95% CI: ",
+           round(ci.auc(roc_curve_any), 3), "-", round(ci.auc(roc_curve_any), 3), ")\n"))
+
+# Plot ROC curve
+plot(roc_curve_any, main = "ROC Curve: EFP/AAP Any Periodontitis vs. CDC/AAP Any Periodontitis",
+     col = "#1c61b6", lwd = 2)
+abline(a = 0, b = 1, lty = 2, col = "gray")
+legend("bottomright", legend = paste("AUC =", round(auc_any, 3)),
+       col = "#1c61b6", lwd = 2, bty = "n")
+
+# --- Objective 2: Severe Periodontitis ---
+
+cat("\n--- Objective 2: Analysis for Severe Periodontitis ---\n\n")
+
+# 2.1 Prevalence Comparison (Severe Periodontitis)
+cat("2.1 Prevalence of Severe Periodontitis:\n")
+prev_cdc_severe <- prop.table(table(periodontal_data$CDC_AAP_Severe))["1"] * 100
+prev_efp_severe <- prop.table(table(periodontal_data$EFP_AAP_Severe))["1"] * 100
+cat(paste0("  Prevalence by 2012 CDC/AAP Severe: ", round(prev_cdc_severe, 2), "%\n"))
+cat(paste0("  Prevalence by 2018 EFP/AAP Stage III-IV: ", round(prev_efp_severe, 2), "%\n"))
+
+# Chi-square test for prevalence comparison
+chi_sq_severe <- chisq.test(table(periodontal_data$CDC_AAP_Severe, periodontal_data$EFP_AAP_Severe))
+cat("\n  Chi-square test for prevalence difference:\n")
+print(chi_sq_severe)
+
+# 2.2 Diagnostic Accuracy (EFP/AAP Severe vs. CDC/AAP Severe as reference)
+cat("\n2.2 Diagnostic Accuracy for Severe Periodontitis (CDC/AAP as Reference):\n")
+
+# Confusion Matrix
+cm_severe <- confusionMatrix(data = periodontal_data$EFP_AAP_Severe,
+                            reference = periodontal_data$CDC_AAP_Severe,
+                            positive = "1")
+print(cm_severe)
+
+# Extract Sensitivity and Specificity
+sensitivity_severe <- cm_severe$byClass["Sensitivity"]
+specificity_severe <- cm_severe$byClass["Specificity"]
+ppv_severe <- cm_severe$byClass["Pos Pred Value"]
+npv_severe <- cm_severe$byClass["Neg Pred Value"]
+
+cat(paste0("  Sensitivity (SS): ", round(sensitivity_severe, 3), "\n"))
+cat(paste0("  Specificity (SP): ", round(specificity_severe, 3), "\n"))
+cat(paste0("  Positive Predictive Value (PPV): ", round(ppv_severe, 3), "\n"))
+cat(paste0("  Negative Predictive Value (NPV): ", round(npv_severe, 3), "\n"))
+
+# ROC Curve and AUC
+roc_curve_severe <- roc(response = periodontal_data$CDC_AAP_Severe,
+                        predictor = as.numeric(as.character(periodontal_data$EFP_AAP_Severe)),
+                        levels = c("0", "1"),
+                        direction = ">")
+
+auc_severe <- auc(roc_curve_severe)
+cat(paste0("  Area Under the ROC Curve (AUC): ", round(auc_severe, 3), " (95% CI: ",
+           round(ci.auc(roc_curve_severe), 3), "-", round(ci.auc(roc_curve_severe), 3), ")\n"))
+
+# Plot ROC curve
+plot(roc_curve_severe, main = "ROC Curve: EFP/AAP Stage III-IV vs. CDC/AAP Severe",
+     col = "#d95f02", lwd = 2)
+abline(a = 0, b = 1, lty = 2, col = "gray")
+legend("bottomright", legend = paste("AUC =", round(auc_severe, 3)),
+       col = "#d95f02", lwd = 2, bty = "n")
+
+Detailed R Script Explanation:
+•	library(pROC) and library(caret): These packages are essential. pROC is for ROC curve analysis and AUC calculation, while caret provides the confusionMatrix function for comprehensive diagnostic accuracy metrics.
+•	Data Loading and Formatting: The script assumes your data is in a dataframe. It's crucial that your binary classification columns (e.g., CDC_AAP_AnyPeriodontitis, EFP_AAP_Severe) are converted to factor type, and that you explicitly set their levels as c("0", "1"). The positive = "1" argument in confusionMatrix and levels = c("0", "1") with direction = ">" in roc ensures that "1" (e.g., presence of periodontitis/severe periodontitis) is correctly identified as the positive outcome.
+•	Prevalence Calculation: prop.table(table(your_variable))["1"] * 100 calculates the percentage of "1"s (positive cases).
+•	Chi-square Test: chisq.test(table(ref_variable, test_variable)) compares the distributions of two categorical variables, indicating if differences in prevalence are statistically significant.
+•	confusionMatrix(): This function is very powerful. It takes your test classification (data) and your referencestandard, and outputs a matrix along with various performance statistics including Sensitivity, Specificity, PPV, and NPV.
+•	roc(): This function generates the data needed for the ROC curve. For binary factors like yours, converting the predictor to numeric (0 or 1) using as.numeric(as.character(...)) is necessary for pROC to interpret it correctly. direction = ">" indicates that higher numeric values of the predictor are associated with the positive class (e.g., 1 is "more positive" than 0).
+•	auc(): Calculates the Area Under the Curve from the roc object. ci.auc() provides confidence intervals for the AUC.
+•	plot(): Generates the ROC curve plot, with a diagonal line for reference (an AUC of 0.5, representing chance).
+This comprehensive plan, with clear objectives, statistical methods, and R scripts, should provide a robust framework for investigating the agreement and diagnostic accuracy between the 2012 CDC/AAP and 2018 EFP/AAP classifications using your periodontal dataset.
+
